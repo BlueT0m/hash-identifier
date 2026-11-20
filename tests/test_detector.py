@@ -131,3 +131,57 @@ def test_hash_prefix_case_sensitivity():
         "$ARGON2id$v=19$m=65536,t=3,p=4$abc$def"
     ) == []
 
+def test_argon2_unsupported_version():
+    value = "$argon2id$v=99$m=65536,t=3,p=4$abc$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_duplicate_parameters():
+    value = "$argon2id$v=19$m=65536,m=32768,t=3,p=4$abc$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_missing_parameter():
+    value = "$argon2id$v=19$m=65536,t=3$abc$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_invalid_base64():
+    value = "$argon2id$v=19$m=65536,t=3,p=4$abc!$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_empty_salt():
+    value = "$argon2id$v=19$m=65536,t=3,p=4$$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_empty_digest():
+    value = "$argon2id$v=19$m=65536,t=3,p=4$abc$"
+    assert identify_hash(value) == []
+
+def test_argon2_memory_below_minimum():
+    value = "$argon2id$v=19$m=16,t=3,p=4$abc$def"
+    assert identify_hash(value) == []
+
+def test_argon2_memory_at_minimum():
+    value = "$argon2id$v=19$m=32,t=3,p=4$abc$def"
+    assert identify_hash(value) == ["Argon2"]
+
+def test_argon2_zero_iterations():
+    value = "$argon2id$v=19$m=65536,t=0,p=4$abc$def"
+    assert identify_hash(value) == []
+
+
+def test_argon2_zero_parallelism():
+    value = "$argon2id$v=19$m=65536,t=3,p=0$abc$def"
+    assert identify_hash(value) == []
+
+def test_argon2_negative_parameter():
+    value = "$argon2id$v=19$m=-1,t=3,p=4$abc$def"
+    assert identify_hash(value) == []
+
+def test_argon2_without_explicit_version():
+    value = "$argon2id$m=65536,t=3,p=4$abc$def"
+    assert identify_hash(value) == ["Argon2"]
+

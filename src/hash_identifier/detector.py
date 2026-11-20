@@ -50,7 +50,6 @@ BASE64_PATTERN = r"[A-Za-z0-9+/]+={0,2}"
 
 def is_argon2(value: str) -> bool:
     """Validate the structure of an Argon2 PHC string."""
-
     parts = value.split("$")
 
     if len(parts) not in (5, 6) or parts[0] != "":
@@ -60,8 +59,9 @@ def is_argon2(value: str) -> bool:
         return False
 
     if len(parts) == 6:
-        if not re.fullmatch(r"v=\d+", parts[2]):
+        if not re.fullmatch(r"v=(?:16|19)", parts[2]):
             return False
+
         parameters = parts[3]
         salt = parts[4]
         digest = parts[5]
@@ -86,6 +86,9 @@ def is_argon2(value: str) -> bool:
         values[key] = int(number)
 
     if set(values) != {"m", "t", "p"}:
+        return False
+
+    if values["m"] < 8 * values["p"]:
         return False
 
     if not re.fullmatch(BASE64_PATTERN, salt):
