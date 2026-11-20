@@ -25,3 +25,7 @@ Thumbs.db
 # Local application data
 hash_history.json
 hash_export.csv
+
+# Batch test files
+sample_hashes.txt
+batch_results.csv
