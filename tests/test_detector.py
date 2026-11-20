@@ -185,3 +185,13 @@ def test_argon2_without_explicit_version():
     value = "$argon2id$m=65536,t=3,p=4$c2FsdHNhbHQ$ZGlnaXN0"
     assert identify_hash(value) == ["Argon2"]
 
+
+
+def test_argon2_salt_too_short():
+    value = "$argon2id$v=19$m=65536,t=3,p=4$YQ$ZGlnaXN0"
+    assert identify_hash(value) == []
+
+
+def test_argon2_digest_too_short():
+    value = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHQ$YQ"
+    assert identify_hash(value) == []

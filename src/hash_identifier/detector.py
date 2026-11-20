@@ -44,8 +44,8 @@ HASH_PATTERNS = {
 }
 
 
-def is_valid_argon2_base64(value: str) -> bool:
-    """Validate unpadded Base64 used in Argon2 PHC strings."""
+def is_valid_argon2_base64(value: str, min_length: int) -> bool:
+    """Validate Argon2 Base64 data and its minimum decoded length."""
 
     if not value:
         return False
@@ -60,7 +60,7 @@ def is_valid_argon2_base64(value: str) -> bool:
 
         encoded = base64.b64encode(decoded).decode("ascii").rstrip("=")
 
-        return encoded == value
+        return encoded == value and len(decoded) >= min_length
 
     except (ValueError, base64.binascii.Error):
         return False
@@ -111,11 +111,11 @@ def is_argon2(value: str) -> bool:
     if values["m"] < 8 * values["p"]:
         return False
 
-    if not is_valid_argon2_base64(salt):
-        return False
+    if not is_valid_argon2_base64(salt, 8):
+    	return False
 
-    if not is_valid_argon2_base64(digest):
-        return False
+    if not is_valid_argon2_base64(digest, 4):
+    	return False
 
     return True
 
