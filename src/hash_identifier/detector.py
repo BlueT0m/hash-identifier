@@ -2,21 +2,18 @@
 import re
 
 
+
+
 HASH_PATTERNS = {
     "MD5": r"[a-fA-F0-9]{32}",
     "NTLM": r"[a-fA-F0-9]{32}",
-
     "SHA-1": r"[a-fA-F0-9]{40}",
-
     "SHA-224": r"[a-fA-F0-9]{56}",
     "SHA3-224": r"[a-fA-F0-9]{56}",
-
     "SHA-256": r"[a-fA-F0-9]{64}",
     "SHA3-256": r"[a-fA-F0-9]{64}",
-
     "SHA-384": r"[a-fA-F0-9]{96}",
     "SHA3-384": r"[a-fA-F0-9]{96}",
-
     "SHA-512": r"[a-fA-F0-9]{128}",
     "SHA3-512": r"[a-fA-F0-9]{128}",
 
@@ -24,21 +21,6 @@ HASH_PATTERNS = {
         r"\$2[aby]\$"
         r"(?:0[4-9]|[12]\d|3[01])\$"
         r"[./A-Za-z0-9]{53}"
-    ),
-
-    "Argon2": (
-        r"\$argon2(?:id|i|d)"
-        r"\$v=\d+"
-        r"\$m=[1-9]\d*,t=[1-9]\d*,p=[1-9]\d*"
-        r"\$[A-Za-z0-9+/]+"
-        r"\$[A-Za-z0-9+/]+"
-    ),
-
-    "PBKDF2": (
-        r"\$pbkdf2-(?:sha1|sha256|sha512)"
-        r"\$[1-9]\d*"
-        r"\$[./A-Za-z0-9]+"
-        r"\$[./A-Za-z0-9]+"
     ),
 
     "MD5-crypt": (
@@ -63,22 +45,104 @@ HASH_PATTERNS = {
 }
 
 
+BASE64_PATTERN = r"[A-Za-z0-9+/]+={0,2}"
+
+
+def is_argon2(value: str) -> bool:
+    """Validate the structure of an Argon2 PHC string."""
+
+    parts = value.split("$")
+
+    if len(parts) not in (5, 6) or parts[0] != "":
+        return False
+
+    if parts[1] not in ("argon2id", "argon2i", "argon2d"):
+        return False
+
+    if len(parts) == 6:
+        if not re.fullmatch(r"v=\d+", parts[2]):
+            return False
+        parameters = parts[3]
+        salt = parts[4]
+        digest = parts[5]
+    else:
+        parameters = parts[2]
+        salt = parts[3]
+        digest = parts[4]
+
+    values = {}
+
+    for parameter in parameters.split(","):
+        match = re.fullmatch(r"(m|t|p)=([1-9]\d*)", parameter)
+
+        if not match:
+            return False
+
+        key, number = match.groups()
+
+        if key in values:
+            return False
+
+        values[key] = int(number)
+
+    if set(values) != {"m", "t", "p"}:
+        return False
+
+    if not re.fullmatch(BASE64_PATTERN, salt):
+        return False
+
+    if not re.fullmatch(BASE64_PATTERN, digest):
+        return False
+
+    return True
+
+
+def is_pbkdf2(value: str) -> bool:
+    """Validate Passlib-style PBKDF2 hash strings."""
+
+    pattern = (
+        r"\$pbkdf2-(?:sha1|sha256|sha512)"
+        r"\$[1-9]\d*"
+        r"\$[./A-Za-z0-9]+"
+        r"\$[./A-Za-z0-9]+"
+    )
+
+    return bool(re.fullmatch(pattern, value))
+
+
 def identify_hash(value: str) -> list[str]:
     value = value.strip()
 
     if not value:
         return []
 
-    return [
-        algorithm
-        for algorithm, pattern in HASH_PATTERNS.items()
-        if re.fullmatch(pattern, value)
-    ]
+    results = []
+
+    for algorithm, pattern in HASH_PATTERNS.items():
+        if re.fullmatch(pattern, value):
+            results.append(algorithm)
+
+    if is_argon2(value):
+        results.append("Argon2")
+
+    if is_pbkdf2(value):
+        results.append("PBKDF2")
+
+    return results
 
 
 def analyze_hash(value: str) -> dict:
     value = value.strip()
     algorithms = identify_hash(value)
+
+    password_hashes = {
+        "bcrypt",
+        "Argon2",
+        "PBKDF2",
+        "MD5-crypt",
+        "SHA-256-crypt",
+        "SHA-512-crypt",
+    }
 
     if not value:
         confidence = "None"
@@ -93,17 +157,10 @@ def analyze_hash(value: str) -> dict:
         explanation = (
             "Multiple algorithms share this format. "
             "The original algorithm cannot be determined "
-            "from length and characters alone."
+            "from structure alone."
         )
 
-    elif algorithms[0] in (
-        "bcrypt",
-        "Argon2",
-        "PBKDF2",
-        "MD5-crypt",
-        "SHA-256-crypt",
-        "SHA-512-crypt",
-    ):
+    elif algorithms[0] in password_hashes:
         confidence = "High"
         explanation = "Recognized password-hash structure"
 
@@ -124,3 +181,4 @@ def analyze_hash(value: str) -> dict:
         "confidence": confidence,
         "explanation": explanation,
     }
+	
