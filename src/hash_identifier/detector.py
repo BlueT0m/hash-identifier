@@ -1,7 +1,6 @@
 
+import base64
 import re
-
-
 
 
 HASH_PATTERNS = {
@@ -45,11 +44,31 @@ HASH_PATTERNS = {
 }
 
 
-BASE64_PATTERN = r"[A-Za-z0-9+/]+={0,2}"
+def is_valid_argon2_base64(value: str) -> bool:
+    """Validate unpadded Base64 used in Argon2 PHC strings."""
+
+    if not value:
+        return False
+
+    try:
+        padding = "=" * (-len(value) % 4)
+
+        decoded = base64.b64decode(
+            value + padding,
+            validate=True
+        )
+
+        encoded = base64.b64encode(decoded).decode("ascii").rstrip("=")
+
+        return encoded == value
+
+    except (ValueError, base64.binascii.Error):
+        return False
 
 
 def is_argon2(value: str) -> bool:
     """Validate the structure of an Argon2 PHC string."""
+
     parts = value.split("$")
 
     if len(parts) not in (5, 6) or parts[0] != "":
@@ -65,6 +84,7 @@ def is_argon2(value: str) -> bool:
         parameters = parts[3]
         salt = parts[4]
         digest = parts[5]
+
     else:
         parameters = parts[2]
         salt = parts[3]
@@ -91,10 +111,10 @@ def is_argon2(value: str) -> bool:
     if values["m"] < 8 * values["p"]:
         return False
 
-    if not re.fullmatch(BASE64_PATTERN, salt):
+    if not is_valid_argon2_base64(salt):
         return False
 
-    if not re.fullmatch(BASE64_PATTERN, digest):
+    if not is_valid_argon2_base64(digest):
         return False
 
     return True
@@ -184,4 +204,3 @@ def analyze_hash(value: str) -> dict:
         "confidence": confidence,
         "explanation": explanation,
     }
-	
