@@ -1,4 +1,4 @@
-
+from src.hash_identifier.batch import analyze_file
 from src.hash_identifier.detector import analyze_hash
 from src.hash_identifier.history import (
     save_analysis,
@@ -26,7 +26,8 @@ def display_menu():
     print("3. Delete history entry")
     print("4. Export CSV")
     print("5. Clear history")
-    print("6. Exit")
+    print("6. Batch hash analysis")
+    print("7. Exit")
     print("=" * 31)
 
 
@@ -94,6 +95,7 @@ def clear_all_history():
         print("\n[*] Operation cancelled.")
 
 
+
 def main():
     display_banner()
 
@@ -104,25 +106,32 @@ def main():
 
             if choice == "1":
                 identify_hash()
-
             elif choice == "2":
                 display_history()
-
             elif choice == "3":
                 delete_entry()
-
             elif choice == "4":
                 export_history(load_history())
-
             elif choice == "5":
                 clear_all_history()
-
             elif choice == "6":
+                input_file = input(
+                    "\n[?] Input TXT file: "
+                ).strip()
+
+                output_file = input(
+                    "[?] Output CSV file (default: batch_results.csv): "
+                ).strip()
+
+                if not output_file:
+                    output_file = "batch_results.csv"
+
+                analyze_file(input_file, output_file)
+            elif choice == "7":
                 print("\n[*] Closing Hash Identifier...")
                 break
-
             else:
-                print("\n[!] Invalid option. Choose 1 to 6.")
+                print("\n[!] Invalid option. Choose 1 to 7.")
 
         except KeyboardInterrupt:
             print("\n\n[*] Operation interrupted.")
