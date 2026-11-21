@@ -1,31 +1,15 @@
-
-# Python
 __pycache__/
 *.py[cod]
-*.pyo
-
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Tests
 .pytest_cache/
 .coverage
 htmlcov/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+history.json
 
-# IDE
-.vscode/
-.idea/
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Local application data
-hash_history.json
-hash_export.csv
-
-# Batch test files
-sample_hashes.txt
-batch_results.csv
+# Generated test exports
+*.csv
+results*.txt

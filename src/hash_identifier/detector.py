@@ -1,206 +1,159 @@
-
+"""Structural hash-format detection. This module never cracks or verifies hashes."""
+from __future__ import annotations
 import base64
 import re
+from dataclasses import asdict, dataclass
+from typing import Optional
 
+@dataclass
+class Candidate:
+    name: str
+    confidence: str
+    reason: str
 
-HASH_PATTERNS = {
-    "MD5": r"[a-fA-F0-9]{32}",
-    "NTLM": r"[a-fA-F0-9]{32}",
-    "SHA-1": r"[a-fA-F0-9]{40}",
-    "SHA-224": r"[a-fA-F0-9]{56}",
-    "SHA3-224": r"[a-fA-F0-9]{56}",
-    "SHA-256": r"[a-fA-F0-9]{64}",
-    "SHA3-256": r"[a-fA-F0-9]{64}",
-    "SHA-384": r"[a-fA-F0-9]{96}",
-    "SHA3-384": r"[a-fA-F0-9]{96}",
-    "SHA-512": r"[a-fA-F0-9]{128}",
-    "SHA3-512": r"[a-fA-F0-9]{128}",
+@dataclass
+class Analysis:
+    input: str
+    candidates: list[Candidate]
+    confidence: str
+    explanation: str
 
-    "bcrypt": (
-        r"\$2[aby]\$"
-        r"(?:0[4-9]|[12]\d|3[01])\$"
-        r"[./A-Za-z0-9]{53}"
-    ),
+    def to_dict(self):
+        return {"input": self.input, "candidates": [asdict(c) for c in self.candidates],
+                "confidence": self.confidence, "explanation": self.explanation}
 
-    "MD5-crypt": (
-        r"\$1\$"
-        r"[./A-Za-z0-9]{1,8}"
-        r"\$[./A-Za-z0-9]{22}"
-    ),
+_HEX = re.compile(r"^[0-9a-fA-F]+$")
+_B64 = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
 
-    "SHA-256-crypt": (
-        r"\$5\$"
-        r"(?:rounds=(?:[1-9]\d{3,8})\$)?"
-        r"[./A-Za-z0-9]{1,16}"
-        r"\$[./A-Za-z0-9]{43}"
-    ),
-
-    "SHA-512-crypt": (
-        r"\$6\$"
-        r"(?:rounds=(?:[1-9]\d{3,8})\$)?"
-        r"[./A-Za-z0-9]{1,16}"
-        r"\$[./A-Za-z0-9]{86}"
-    ),
-}
-
-
-def is_valid_argon2_base64(value: str, min_length: int) -> bool:
-    """Validate Argon2 Base64 data and its minimum decoded length."""
-
-    if not value:
+def _b64_valid(value: str, min_bytes: int) -> bool:
+    if not value or not _B64.fullmatch(value):
         return False
-
     try:
-        padding = "=" * (-len(value) % 4)
-
-        decoded = base64.b64decode(
-            value + padding,
-            validate=True
-        )
-
-        encoded = base64.b64encode(decoded).decode("ascii").rstrip("=")
-
-        return encoded == value and len(decoded) >= min_length
-
-    except (ValueError, base64.binascii.Error):
+        raw = base64.b64decode(value + "=" * ((-len(value)) % 4), validate=True)
+        return len(raw) >= min_bytes and base64.b64encode(raw).decode().rstrip("=") == value.rstrip("=")
+    except Exception:
         return False
 
-
-def is_argon2(value: str) -> bool:
-    """Validate the structure of an Argon2 PHC string."""
-
+def _argon2(value: str) -> Optional[str]:
     parts = value.split("$")
-
-    if len(parts) not in (5, 6) or parts[0] != "":
-        return False
-
-    if parts[1] not in ("argon2id", "argon2i", "argon2d"):
-        return False
-
+    if len(parts) not in (5, 6) or parts[0] != "" or parts[1] not in ("argon2id", "argon2i", "argon2d"):
+        return None
+    i = 2
     if len(parts) == 6:
-        if not re.fullmatch(r"v=(?:16|19)", parts[2]):
-            return False
-
-        parameters = parts[3]
-        salt = parts[4]
-        digest = parts[5]
-
-    else:
-        parameters = parts[2]
-        salt = parts[3]
-        digest = parts[4]
-
+        if not re.fullmatch(r"v=(16|19)", parts[2]):
+            return None
+        i = 3
+    params = parts[i].split(",")
+    if len(params) != 3:
+        return None
     values = {}
+    for item in params:
+        if not re.fullmatch(r"[mtp]=[1-9][0-9]*", item):
+            return None
+        k, v = item.split("=")
+        if k in values:
+            return None
+        values[k] = int(v)
+    if set(values) != {"m", "t", "p"} or values["m"] < 8 * values["p"]:
+        return None
+    if not _b64_valid(parts[i+1], 8) or not _b64_valid(parts[i+2], 4):
+        return None
+    return parts[1]
 
-    for parameter in parameters.split(","):
-        match = re.fullmatch(r"(m|t|p)=([1-9]\d*)", parameter)
+def _pbkdf2(value: str) -> Optional[str]:
+    # Passlib/Django-style: $pbkdf2-sha256$rounds$salt$checksum
+    m = re.fullmatch(r"\$(pbkdf2-(?:sha1|sha256|sha512))\$([1-9][0-9]*)\$([A-Za-z0-9./]+)\$([A-Za-z0-9./+=]+)", value)
+    if m and int(m.group(2)) >= 1:
+        return m.group(1)
+    # Werkzeug-style: pbkdf2:sha256:iterations$salt$hex-digest
+    m = re.fullmatch(r"pbkdf2:(sha256|sha512|sha1):([1-9][0-9]*)\$([^$]+)\$([0-9a-fA-F]+)", value)
+    if m and len(m.group(4)) >= 32 and len(m.group(4)) % 2 == 0:
+        return "PBKDF2-" + m.group(1).upper()
+    return None
 
-        if not match:
-            return False
+def _scrypt(value: str) -> bool:
+    if value.startswith("$scrypt$"):
+        return bool(re.fullmatch(r"\$scrypt\$ln=[0-9]{1,2},r=[1-9][0-9]*,p=[1-9][0-9]*\$[^$]+\$[^$]+", value))
+    if value.startswith("scrypt$"):
+        return len(value.split("$")) == 4
+    return False
 
-        key, number = match.groups()
+def analyze_hash(value: str) -> Analysis:
+    raw = value.strip()
+    candidates: list[Candidate] = []
+    if not raw:
+        return Analysis(raw, [], "None", "Entrée vide.")
 
-        if key in values:
-            return False
+    def add(name, confidence, reason):
+        candidates.append(Candidate(name, confidence, reason))
 
-        values[key] = int(number)
+    argon = _argon2(raw)
+    if argon:
+        add(argon.upper(), "High", "Préfixe Argon2 reconnu et paramètres/base64 valides.")
+    elif raw.startswith(("$argon2", "$argon")):
+        pass
 
-    if set(values) != {"m", "t", "p"}:
-        return False
+    pb = _pbkdf2(raw)
+    if pb:
+        add(pb.upper(), "High", "Structure PBKDF2 reconnue.")
+    if _scrypt(raw):
+        add("scrypt", "High", "Structure scrypt reconnue.")
 
-    if values["m"] < 8 * values["p"]:
-        return False
+    if re.fullmatch(r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}", raw):
+        add("bcrypt", "High", "Préfixe, coût et longueur bcrypt reconnus.")
+    if re.fullmatch(r"\$1\$[^$]{1,8}\$[./A-Za-z0-9]{22}", raw):
+        add("MD5-crypt", "High", "Structure MD5-crypt reconnue.")
+    if re.fullmatch(r"\$5\$(?:rounds=\d+\$)?[^$]{1,16}\$[./A-Za-z0-9]{43}", raw):
+        add("SHA-256-crypt", "High", "Structure SHA-256-crypt reconnue.")
+    if re.fullmatch(r"\$6\$(?:rounds=\d+\$)?[^$]{1,16}\$[./A-Za-z0-9]{86}", raw):
+        add("SHA-512-crypt", "High", "Structure SHA-512-crypt reconnue.")
 
-    if not is_valid_argon2_base64(salt, 8):
-    	return False
+    low = raw.lower()
+    if re.fullmatch(r"\*[0-9a-f]{40}", low):
+        add("MySQL 4.1+", "High", "Format MySQL 4.1+ : astérisque suivi de 40 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{16}", low):
+        add("MySQL 3.23", "Low", "16 caractères hexadécimaux, format partagé avec d'autres empreintes.")
+        add("DES crypt", "Low", "Longueur compatible avec certaines représentations DES crypt.")
+    if re.fullmatch(r"[0-9a-f]{32}", low):
+        add("MD5", "Ambiguous", "32 caractères hexadécimaux.")
+        add("NTLM", "Ambiguous", "NTLM utilise également 32 caractères hexadécimaux.")
+        add("LM", "Low", "Une empreinte LM est représentée par 32 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{40}", low):
+        add("SHA-1", "High", "40 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{56}", low):
+        add("SHA-224", "High", "56 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{64}", low):
+        add("SHA-256", "High", "64 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{96}", low):
+        add("SHA-384", "High", "96 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{128}", low):
+        add("SHA-512", "High", "128 caractères hexadécimaux.")
+    if re.fullmatch(r"[0-9a-f]{64}", low):
+        add("SHA3-256", "Low", "Longueur compatible avec SHA3-256, indistinguable de SHA-256 sur la seule longueur.")
+    if re.fullmatch(r"[0-9a-f]{56}", low):
+        add("SHA3-224", "Low", "Longueur compatible avec SHA3-224, indistinguable de SHA-224 sur la seule longueur.")
+    if re.fullmatch(r"[0-9a-f]{96}", low):
+        add("SHA3-384", "Low", "Longueur compatible avec SHA3-384, indistinguable de SHA-384 sur la seule longueur.")
+    if re.fullmatch(r"[0-9a-f]{128}", low):
+        add("SHA3-512", "Low", "Longueur compatible avec SHA3-512, indistinguable de SHA-512 sur la seule longueur.")
 
-    if not is_valid_argon2_base64(digest, 4):
-    	return False
+    # NetNTLMv2 capture form: USER::DOMAIN:challenge:response:blob
+    if re.fullmatch(r"[^:\s]+::[^:\s]*:[0-9a-fA-F]{16}:[0-9a-fA-F]{32,}:[0-9a-fA-F]+", raw):
+        add("NetNTLMv2", "High", "Structure de capture NetNTLMv2 reconnue.")
+    # NetNTLMv1 capture form: USER::DOMAIN:response:response:challenge
+    if re.fullmatch(r"[^:\s]+::[^:\s]*:[0-9a-fA-F]{48}:[0-9a-fA-F]{48}:[0-9a-fA-F]{16}", raw):
+        add("NetNTLMv1", "High", "Structure de capture NetNTLMv1 reconnue.")
 
-    return True
-
-
-def is_pbkdf2(value: str) -> bool:
-    """Validate Passlib-style PBKDF2 hash strings."""
-
-    pattern = (
-        r"\$pbkdf2-(?:sha1|sha256|sha512)"
-        r"\$[1-9]\d*"
-        r"\$[./A-Za-z0-9]+"
-        r"\$[./A-Za-z0-9]+"
-    )
-
-    return bool(re.fullmatch(pattern, value))
-
+    if not candidates:
+        explanation = "Aucun format pris en charge n'a été reconnu."
+        confidence = "None"
+    elif len(candidates) == 1:
+        confidence = candidates[0].confidence
+        explanation = candidates[0].reason
+    else:
+        confidence = "Ambiguous"
+        explanation = "Plusieurs formats correspondent à cette structure. Une valeur seule ne suffit pas à les départager."
+    return Analysis(raw, candidates, confidence, explanation)
 
 def identify_hash(value: str) -> list[str]:
-    value = value.strip()
-
-    if not value:
-        return []
-
-    results = []
-
-    for algorithm, pattern in HASH_PATTERNS.items():
-        if re.fullmatch(pattern, value):
-            results.append(algorithm)
-
-    if is_argon2(value):
-        results.append("Argon2")
-
-    if is_pbkdf2(value):
-        results.append("PBKDF2")
-
-    return results
-
-
-def analyze_hash(value: str) -> dict:
-    value = value.strip()
-    algorithms = identify_hash(value)
-
-    password_hashes = {
-        "bcrypt",
-        "Argon2",
-        "PBKDF2",
-        "MD5-crypt",
-        "SHA-256-crypt",
-        "SHA-512-crypt",
-    }
-
-    if not value:
-        confidence = "None"
-        explanation = "Empty input"
-
-    elif not algorithms:
-        confidence = "None"
-        explanation = "Unknown hash format"
-
-    elif len(algorithms) > 1:
-        confidence = "Ambiguous"
-        explanation = (
-            "Multiple algorithms share this format. "
-            "The original algorithm cannot be determined "
-            "from structure alone."
-        )
-
-    elif algorithms[0] in password_hashes:
-        confidence = "High"
-        explanation = "Recognized password-hash structure"
-
-    else:
-        confidence = "Low"
-        explanation = (
-            "Length and character pattern match, "
-            "but other algorithms may share this format."
-        )
-
-    return {
-        "input": value,
-        "length": len(value),
-        "possible_algorithms": algorithms,
-        "is_hexadecimal": bool(
-            re.fullmatch(r"[a-fA-F0-9]+", value)
-        ),
-        "confidence": confidence,
-        "explanation": explanation,
-    }
+    return [c.name for c in analyze_hash(value).candidates]
