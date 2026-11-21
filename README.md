@@ -35,6 +35,10 @@ python -m pip install -e ".[test]"
 pytest --cov=hash_identifier --cov-report=term-missing
 ```
 
+## Demo
+
+![Hash Identifier terminal demonstration](docs/images/hash-identifier-demo.png)
+
 ## Examples
 
 ```bash
@@ -50,7 +54,7 @@ hash-identifier stats
 You can also run it without installing:
 
 ```bash
-python hash_identifier.py identify 5d41402abc4b2a76b9719d911017c592
+python run_hash_identifier.py identify 5d41402abc4b2a76b9719d911017c592
 ```
 
 ## Commands
