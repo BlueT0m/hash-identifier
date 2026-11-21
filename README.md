@@ -33,7 +33,23 @@ It is designed for cybersecurity learning, technical analysis, and authorized se
 
 ## Demo
 
-![Hash Identifier terminal demonstration](docs/images/hash-identifier-demo.png)
+### 1. Hash identification
+
+Identify a hash and display its possible formats with confidence levels.
+
+![Hash identification](docs/images/01-hash-detection.png)
+
+### 2. JSON output
+
+Get structured results in JSON format, including candidates and explanations.
+
+![JSON output](docs/images/02-json-output.png)
+
+### 3. Batch analysis
+
+Analyze multiple hashes from a file in a single command.
+
+![Batch analysis](docs/images/03-batch-analysis.png)
 
 ## Supported platforms
 
