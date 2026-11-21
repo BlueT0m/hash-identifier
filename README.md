@@ -1,4 +1,13 @@
 # Hash Identifier v1.0.0
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey)
+![Version](https://img.shields.io/badge/Version-1.0.0-orange)
+![Dependencies](https://img.shields.io/badge/Dependencies-None-brightgreen)
+
+[![GitHub Stars](https://img.shields.io/github/stars/BlueT0m/hash-identifier?style=social)](https://github.com/BlueT0m/hash-identifier/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/BlueT0m/hash-identifier)](https://github.com/BlueT0m/hash-identifier/issues)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/BlueT0m/hash-identifier)](https://github.com/BlueT0m/hash-identifier/pulls)
 
 **An offline command-line tool for structural hash identification.**
 
@@ -34,7 +43,7 @@ It is designed for cybersecurity learning, technical analysis, and authorized se
 
 ### Kali Linux / Debian / Ubuntu
 
-Install Python and the virtual environment package:
+Install the required packages:
 
 ```bash
 sudo apt update
@@ -248,6 +257,20 @@ Planned improvements for future releases:
 - Extensible detection architecture.
 
 These improvements are planned and are not part of v1.0.0.
+
+## Releases
+
+Download the latest stable release:
+
+[Hash Identifier v1.0.0](https://github.com/BlueT0m/hash-identifier/releases/tag/v1.0.0)
+
+For installation instructions, see the Installation section above.
+
+## Support
+
+- [Report a bug](https://github.com/BlueT0m/hash-identifier/issues/new)
+- [Request a feature](https://github.com/BlueT0m/hash-identifier/issues)
+- [Contribute](https://github.com/BlueT0m/hash-identifier/blob/main/CONTRIBUTING.md)
 
 ## Contributing
 
